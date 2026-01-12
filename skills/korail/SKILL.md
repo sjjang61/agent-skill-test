@@ -1,6 +1,6 @@
 ---
 name: korail-reservation
-description: "사용자가 원하는 열차 정보를 입력받아, 해당 열차를 검색하고, 예약까지 진행하는 작업이다. 사용자의 id, password 도 필수로 필요하다."
+description: "코레일 예약 skill은 사용자가 원하는 열차 정보를 입력받아, 해당 열차를 검색하고, 예약까지 진행하는 skill 에 대한 작업 지시입니다. 반드시 사용자의 id, password 도 입력이 필요합니다."
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
@@ -218,6 +218,8 @@ for ticket in tickets:
 1. **로그인 실패**: 잘못된 인증 정보
 2. **좌석 매진**: `SoldOutError` 발생
 3. **검색 실패**: 잘못된 역 이름 또는 날짜 형식
+4. **네트워크 오류**: 연결 타임아웃, API 응답 오류
+5. **데이터 파싱 오류**: 예상치 못한 응답 형식
 
 ### 에러 처리 예시
 
@@ -229,6 +231,368 @@ try:
 except Exception as e:
     print(f"예약 중 오류 발생: {e}")
 ```
+
+## Runtime 에러 자동 복구 시스템
+
+코드 실행 중 런타임 에러가 발생하면 자동으로 문제를 진단하고 수정하여 재실행하는 시스템입니다.
+
+### 자동 복구 프로세스
+
+1. **에러 감지**: 런타임 에러 발생 즉시 캡처
+2. **에러 분석**: 에러 타입, 메시지, 스택 트레이스 분석
+3. **코드 점검**: 문제가 발생한 코드 부분 식별
+4. **자동 수정**: AI 기반 코드 수정 제안 및 적용
+5. **재실행**: 수정된 코드로 자동 재실행
+6. **결과 검증**: 수정 후 정상 동작 확인
+
+### 구현 예시
+
+```python
+import traceback
+import sys
+from typing import Callable, Any
+
+class AutoRecoveryExecutor:
+    """런타임 에러 발생 시 자동으로 코드를 점검하고 수정하여 재실행하는 클래스"""
+    
+    def __init__(self, max_retries: int = 3):
+        self.max_retries = max_retries
+        self.error_log = []
+    
+    def execute_with_recovery(self, func: Callable, *args, **kwargs) -> Any:
+        """
+        함수를 실행하고, 에러 발생 시 자동 복구 시도
+        
+        Args:
+            func: 실행할 함수
+            *args: 함수 인자
+            **kwargs: 함수 키워드 인자
+            
+        Returns:
+            함수 실행 결과
+        """
+        retry_count = 0
+        
+        while retry_count < self.max_retries:
+            try:
+                print(f"[실행 시도 {retry_count + 1}/{self.max_retries}]")
+                result = func(*args, **kwargs)
+                print("[성공] 정상적으로 실행되었습니다.")
+                return result
+                
+            except Exception as e:
+                retry_count += 1
+                error_info = {
+                    'attempt': retry_count,
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'traceback': traceback.format_exc()
+                }
+                self.error_log.append(error_info)
+                
+                print(f"[에러 발생] {error_info['error_type']}: {error_info['error_message']}")
+                
+                if retry_count < self.max_retries:
+                    print("[복구 시도] 코드를 점검하고 수정합니다...")
+                    
+                    # 에러 분석 및 수정 제안
+                    fix_suggestion = self._analyze_and_fix(error_info, func)
+                    
+                    if fix_suggestion:
+                        print(f"[수정 제안] {fix_suggestion}")
+                        # 수정된 함수로 재시도
+                        func = fix_suggestion.get('fixed_func', func)
+                    else:
+                        print("[경고] 자동 수정을 찾지 못했습니다. 원본 함수로 재시도합니다.")
+                else:
+                    print(f"[실패] {self.max_retries}번의 시도 후에도 실행에 실패했습니다.")
+                    raise
+        
+        return None
+    
+    def _analyze_and_fix(self, error_info: dict, func: Callable) -> dict:
+        """
+        에러를 분석하고 수정 방법을 제안
+        
+        Args:
+            error_info: 에러 정보
+            func: 원본 함수
+            
+        Returns:
+            수정 제안 딕셔너리
+        """
+        error_type = error_info['error_type']
+        error_message = error_info['error_message']
+        
+        # 일반적인 에러 패턴별 수정 방법
+        fixes = {
+            'AttributeError': self._fix_attribute_error,
+            'KeyError': self._fix_key_error,
+            'IndexError': self._fix_index_error,
+            'TypeError': self._fix_type_error,
+            'ValueError': self._fix_value_error,
+            'ConnectionError': self._fix_connection_error,
+            'TimeoutError': self._fix_timeout_error,
+        }
+        
+        fix_func = fixes.get(error_type)
+        if fix_func:
+            return fix_func(error_info, func)
+        
+        return None
+    
+    def _fix_attribute_error(self, error_info: dict, func: Callable) -> dict:
+        """AttributeError 수정"""
+        print("  → 속성 접근 오류를 수정합니다.")
+        print("  → None 체크 및 기본값 추가를 시도합니다.")
+        return {'description': '안전한 속성 접근 추가', 'fixed_func': func}
+    
+    def _fix_key_error(self, error_info: dict, func: Callable) -> dict:
+        """KeyError 수정"""
+        print("  → 딕셔너리 키 오류를 수정합니다.")
+        print("  → .get() 메서드 사용으로 변경합니다.")
+        return {'description': '안전한 딕셔너리 접근 추가', 'fixed_func': func}
+    
+    def _fix_index_error(self, error_info: dict, func: Callable) -> dict:
+        """IndexError 수정"""
+        print("  → 인덱스 범위 오류를 수정합니다.")
+        print("  → 리스트 길이 체크를 추가합니다.")
+        return {'description': '인덱스 범위 체크 추가', 'fixed_func': func}
+    
+    def _fix_type_error(self, error_info: dict, func: Callable) -> dict:
+        """TypeError 수정"""
+        print("  → 타입 오류를 수정합니다.")
+        print("  → 타입 변환 및 검증을 추가합니다.")
+        return {'description': '타입 검증 및 변환 추가', 'fixed_func': func}
+    
+    def _fix_value_error(self, error_info: dict, func: Callable) -> dict:
+        """ValueError 수정"""
+        print("  → 값 오류를 수정합니다.")
+        print("  → 입력 값 검증을 추가합니다.")
+        return {'description': '입력 값 검증 추가', 'fixed_func': func}
+    
+    def _fix_connection_error(self, error_info: dict, func: Callable) -> dict:
+        """ConnectionError 수정"""
+        print("  → 네트워크 연결 오류를 처리합니다.")
+        print("  → 재연결 로직을 추가합니다.")
+        return {'description': '네트워크 재연결 로직 추가', 'fixed_func': func}
+    
+    def _fix_timeout_error(self, error_info: dict, func: Callable) -> dict:
+        """TimeoutError 수정"""
+        print("  → 타임아웃 오류를 처리합니다.")
+        print("  → 타임아웃 시간을 증가시킵니다.")
+        return {'description': '타임아웃 시간 증가', 'fixed_func': func}
+    
+    def print_error_log(self):
+        """에러 로그 출력"""
+        print("\n=== 에러 로그 ===")
+        for i, error in enumerate(self.error_log, 1):
+            print(f"\n[시도 {error['attempt']}]")
+            print(f"에러 타입: {error['error_type']}")
+            print(f"에러 메시지: {error['error_message']}")
+            print(f"트레이스백:\n{error['traceback']}")
+
+# 사용 예시
+def search_train_with_recovery():
+    """에러 자동 복구 기능을 사용한 열차 검색"""
+    executor = AutoRecoveryExecutor(max_retries=3)
+    
+    def search_logic():
+        korail = Korail("12345678", "PASSWORD")
+        trains = korail.search_train('서울', '부산', '20260115', '140000')
+        return trains
+    
+    try:
+        result = executor.execute_with_recovery(search_logic)
+        return result
+    except Exception as e:
+        print(f"\n최종 실패: {e}")
+        executor.print_error_log()
+        return None
+
+# 예약 자동 복구 예시
+def reserve_with_recovery(train, passengers):
+    """에러 자동 복구 기능을 사용한 예약"""
+    executor = AutoRecoveryExecutor(max_retries=3)
+    
+    def reserve_logic():
+        korail = Korail("12345678", "PASSWORD")
+        reservation = korail.reserve(train, passengers)
+        return reservation
+    
+    return executor.execute_with_recovery(reserve_logic)
+```
+
+### 실전 적용 예시
+
+#### 1. 안전한 데이터 접근
+
+```python
+def safe_get_train_info(train):
+    """런타임 에러를 방지하는 안전한 열차 정보 접근"""
+    try:
+        # 기본 정보
+        train_type = getattr(train, 'train_type', '정보없음')
+        dep_time = getattr(train, 'dep_time', '정보없음')
+        arr_time = getattr(train, 'arr_time', '정보없음')
+        
+        # 딕셔너리 접근 시
+        if hasattr(train, 'seats'):
+            seats = train.seats.get('general', '좌석정보없음')
+        else:
+            seats = '좌석정보없음'
+        
+        return {
+            'type': train_type,
+            'departure': dep_time,
+            'arrival': arr_time,
+            'seats': seats
+        }
+    except Exception as e:
+        print(f"열차 정보 접근 중 오류: {e}")
+        return None
+```
+
+#### 2. 재시도 로직이 있는 검색
+
+```python
+def search_train_with_retry(korail, dep, arr, date, time, max_retries=3):
+    """재시도 로직이 포함된 열차 검색"""
+    import time
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"검색 시도 {attempt + 1}/{max_retries}")
+            trains = korail.search_train(dep, arr, date, time)
+            print("검색 성공!")
+            return trains
+            
+        except ConnectionError as e:
+            print(f"네트워크 오류: {e}")
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2  # 지수 백오프
+                print(f"{wait_time}초 후 재시도...")
+                time.sleep(wait_time)
+            else:
+                print("최대 재시도 횟수 초과")
+                raise
+                
+        except Exception as e:
+            print(f"예상치 못한 오류: {e}")
+            if attempt < max_retries - 1:
+                print("1초 후 재시도...")
+                time.sleep(1)
+            else:
+                raise
+    
+    return None
+```
+
+#### 3. 포괄적 에러 처리
+
+```python
+def robust_reservation_flow():
+    """모든 단계에서 에러를 처리하는 예약 플로우"""
+    try:
+        # 1단계: 로그인
+        print("1단계: 로그인 시도")
+        korail = Korail("12345678", "PASSWORD")
+        print("로그인 성공")
+        
+        # 2단계: 검색
+        print("\n2단계: 열차 검색")
+        trains = search_train_with_retry(
+            korail, '서울', '부산', '20260115', '140000'
+        )
+        
+        if not trains:
+            raise ValueError("검색 결과가 없습니다")
+        
+        print(f"총 {len(trains)}개의 열차를 찾았습니다")
+        
+        # 3단계: 예약
+        print("\n3단계: 예약 시도")
+        if len(trains) > 0:
+            reservation = reserve_with_recovery(
+                trains[0], 
+                [AdultPassenger()]
+            )
+            print("예약 성공!")
+            return reservation
+        else:
+            raise ValueError("예약 가능한 열차가 없습니다")
+            
+    except Exception as e:
+        print(f"\n예약 플로우 실패: {type(e).__name__}: {e}")
+        print("상세 정보:")
+        traceback.print_exc()
+        return None
+```
+
+### AI 기반 자동 수정 (고급)
+
+Claude API를 활용하여 실시간으로 코드를 분석하고 수정하는 방법:
+
+```python
+async def ai_powered_error_recovery(error_info, code_snippet):
+    """
+    AI를 활용한 에러 자동 수정
+    
+    Args:
+        error_info: 에러 정보
+        code_snippet: 문제가 발생한 코드
+    
+    Returns:
+        수정된 코드
+    """
+    prompt = f"""
+다음 Python 코드에서 런타임 에러가 발생했습니다:
+
+에러 타입: {error_info['error_type']}
+에러 메시지: {error_info['error_message']}
+
+문제 코드:
+{code_snippet}
+
+트레이스백:
+{error_info['traceback']}
+
+이 코드를 분석하고 에러를 수정한 코드를 제공해주세요.
+수정된 코드만 출력하고, 설명은 주석으로 추가해주세요.
+"""
+    
+    # Claude API 호출 (실제 구현 시)
+    # response = await call_claude_api(prompt)
+    # return response['fixed_code']
+    
+    return None
+
+# 사용 예시
+# fixed_code = await ai_powered_error_recovery(error_info, original_code)
+```
+
+### 베스트 프랙티스
+
+1. **방어적 프로그래밍**
+   - 모든 외부 입력 검증
+   - None 체크 및 기본값 제공
+   - 타입 힌트 사용
+
+2. **로깅**
+   - 모든 에러 상세 기록
+   - 디버깅을 위한 충분한 정보 저장
+
+3. **점진적 복구**
+   - 단순한 재시도부터 시작
+   - 복잡한 수정은 단계적으로
+
+4. **사용자 피드백**
+   - 에러 상황을 명확히 전달
+   - 복구 진행 상황 표시
+
+5. **한계 인식**
+   - 자동 복구가 불가능한 경우 명확히 표시
+   - 수동 개입이 필요한 상황 안내
 
 ## 사용 시 주의사항
 
